@@ -169,7 +169,15 @@ MAX_CALLS_PER_SECOND = 2
 @sleep_and_retry
 @limits(calls=MAX_CALLS_PER_SECOND, period=ONE_SECOND)
 def xunfei_api(input_text: str) -> np.ndarray:
-    desc = {"messages":[{"content":input_text,"role":"user"}]}
+    max_chunk_size = 2000
+    
+    # 切分文本
+    chunks = [input_text[i:i + max_chunk_size] for i in range(0, len(input_text), max_chunk_size)]
+    
+    # 将chunks封装到messages列表中
+    messages = [{"content": chunk, "role": "user"} for chunk in chunks]
+    
+    desc = {"messages": messages}
     # 当上传文档时 ，需要将文本切分为多块，然后将切分的chunk 填充到上面的content中
     # get_embp_embedding   是将文本、知识库内容进行向量化的服务
     res = get_embp_embedding(desc,appid=APPID,apikey=APIKEY,apisecret=APISecret)
@@ -207,7 +215,6 @@ def embeddings():
     for index, text in enumerate(input_texts):
         if not isinstance(text, str):
             return jsonify({"error": f"Input at index {index} must be a string"}), 400
-        print(text)
         try:
             embedding = xunfei_api(text)
         except Exception as e:
