@@ -18,6 +18,7 @@ import numpy as np
 from flask import Flask, request, jsonify
 import os
 from flask_cors import CORS  # 导入CORS
+from ratelimit import limits, sleep_and_retry
 
 #运行前请配置以下鉴权三要素，获取途径：https://console.xfyun.cn/services/bm3
 # 请配置环境变量：
@@ -159,6 +160,14 @@ def handle_message(message):
         return text
 
 
+
+# 设置速率限制：每秒最多2次调用
+ONE_SECOND = 1
+MAX_CALLS_PER_SECOND = 2
+
+# 使用sleep_and_retry确保在达到速率限制时自动等待
+@sleep_and_retry
+@limits(calls=MAX_CALLS_PER_SECOND, period=ONE_SECOND)
 def xunfei_api(input_text: str) -> np.ndarray:
     desc = {"messages":[{"content":input_text,"role":"user"}]}
     # 当上传文档时 ，需要将文本切分为多块，然后将切分的chunk 填充到上面的content中
@@ -176,33 +185,42 @@ CORS(app)
 @app.route('/v1/embeddings', methods=['POST'])
 def embeddings():
     input_data = request.json
-    input_text = input_data.get('input')  # 获取传入的字符串
     
-    if not isinstance(input_text, str):
-        return jsonify({"error": "Input must be a string"}), 400
+    # 获取输入数据，默认为空列表
+    input_texts = input_data.get('input', [])
+    
+    # 检查输入是字符串还是数组
+    if isinstance(input_texts, str):
+        input_texts = [input_texts]  # 如果是字符串，转换为单元素列表
 
     model_id = 'xunfei'  # 固定模型ID为'xunfei'
 
-    # 调用讯飞API获取嵌入
-    embedding = xunfei_api(input_text)
-
-    if embedding is None:
-        return jsonify({"error": "Failed to get embedding from Xunfei API"}), 500
-
     response_data = {
-        "data": [
-            {
-                "embedding": embedding.tolist(),
-                "index": 0,
-                "object": "embedding"
-            }
-        ],
+        "data": [],
         "model": model_id,
         "usage": {
             "prompt_tokens": 0,
             "total_tokens": 0
         }
     }
+
+    for index, text in enumerate(input_texts):
+        if not isinstance(text, str):
+            return jsonify({"error": f"Input at index {index} must be a string"}), 400
+        print(text)
+        try:
+            embedding = xunfei_api(text)
+        except Exception as e:
+            return jsonify({"error": f"Failed to get embedding for input at index {index}: {str(e)}"}), 500
+        
+        if embedding is None:
+            return jsonify({"error": f"Failed to get embedding for input at index {index}"}), 500
+
+        response_data['data'].append({
+            "embedding": embedding.tolist(),
+            "index": index,
+            "object": "embedding"
+        })
 
     return jsonify(response_data)
 
