@@ -17,6 +17,7 @@ import chardet
 import numpy as np
 from flask import Flask, request, jsonify
 import os
+from flask_cors import CORS  # 导入CORS
 
 #运行前请配置以下鉴权三要素，获取途径：https://console.xfyun.cn/services/bm3
 # 请配置环境变量：
@@ -170,6 +171,7 @@ def xunfei_api(input_text: str) -> np.ndarray:
     return handle_message(res)
 
 app = Flask(__name__)
+CORS(app)
 
 @app.route('/v1/embeddings', methods=['POST'])
 def embeddings():
